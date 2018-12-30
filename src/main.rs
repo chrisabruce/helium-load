@@ -20,21 +20,22 @@ fn main() {
                 .short("f")
                 .long("formula")
                 .value_name("FORMULA")
-                .help("Which load formula to run: pong | multiply")
+                .help("Which load formula to run: ping | pong | multiply")
                 .takes_value(true),
         )
         .get_matches();
 
-    let formula = matches.value_of("formula").unwrap_or("pong");
+    let formula = matches.value_of("formula").unwrap_or("ping");
     println!("Value for formula: {}", formula);
 
     match formula {
         "multiply" => create_and_multiply(),
-        _ => ping_pong(),
+        "pong" => pong(),
+        _ => ping(),
     };
 }
 
-fn ping_pong() {
+fn pong() {
     let node = helium::Node::new("localhost", 4001);
     let accounts = node.list_accounts().unwrap();
 
@@ -59,6 +60,42 @@ fn ping_pong() {
             Ok(())
         })
         .map_err(|e| print!("interval errored; err={:?}\n", e));
+
+    tokio::run(task);
+}
+
+fn ping() {
+    let node = helium::Node::new("localhost", 4001);
+    let accounts = node.list_accounts().unwrap();
+
+    print!("Found {} account(s).\n", accounts.len());
+    if accounts.len() < 1 {
+        panic!("Requires two existing accounts.");
+    }
+
+    let mut last_height = node.status().unwrap().chain_height;
+
+    let interval = Duration::new(POLL_INTERVAL, 0);
+    let task = Interval::new_interval(interval)
+        .for_each(move |_| {
+            println!("Checking...");
+            let cur_height = node.status().unwrap().node_height; // want to make sure node is current
+            if cur_height > last_height {
+                println!("New height: {}", cur_height);
+                let mut rng = rand::thread_rng();
+                let amt: u64 = rng.gen_range(10_000, 100_000);
+
+                print!("Paying: {}\n", amt);
+                node.pay(&accounts[0].address, &accounts[1].address, amt)
+                    .unwrap();
+
+                node.pay(&accounts[1].address, &accounts[0].address, amt)
+                    .unwrap();
+                last_height = cur_height;
+            }
+            Ok(())
+        })
+        .map_err(|e| println!("interval errored; err={:?}", e));
 
     tokio::run(task);
 }
