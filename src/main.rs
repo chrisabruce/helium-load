@@ -1,12 +1,69 @@
 use helium;
 
+use rand::prelude::*;
 use std::time::Duration;
 use tokio::prelude::*;
 use tokio::timer::Interval;
 
+use clap::{App, Arg};
+
 const POLL_INTERVAL: u64 = 10;
+const PAY_INTERVAL: u64 = 60;
 
 fn main() {
+    let matches = App::new("Helium Load")
+        .version("1.0")
+        .author("Chris Bruce <chris@helium.com>")
+        .about("Provides various options for load testing helium blockchain.")
+        .arg(
+            Arg::with_name("formula")
+                .short("f")
+                .long("formula")
+                .value_name("FORMULA")
+                .help("Which load formula to run: pong | multiply")
+                .takes_value(true),
+        )
+        .get_matches();
+
+    let formula = matches.value_of("formula").unwrap_or("pong");
+    println!("Value for formula: {}", formula);
+
+    match formula {
+        "multiply" => create_and_multiply(),
+        _ => ping_pong(),
+    };
+}
+
+fn ping_pong() {
+    let node = helium::Node::new("localhost", 4001);
+    let accounts = node.list_accounts().unwrap();
+
+    print!("Found {} account(s).\n", accounts.len());
+    if accounts.len() < 1 {
+        panic!("Requires two existing accounts.");
+    }
+
+    let interval = Duration::new(PAY_INTERVAL, 0);
+    let task = Interval::new_interval(interval)
+        .for_each(move |_| {
+            let mut rng = rand::thread_rng();
+            let amt: u64 = rng.gen_range(10_000, 100_000);
+
+            print!("Paying: {}\n", amt);
+            node.pay(&accounts[0].address, &accounts[1].address, amt)
+                .unwrap();
+
+            node.pay(&accounts[1].address, &accounts[0].address, amt)
+                .unwrap();
+
+            Ok(())
+        })
+        .map_err(|e| print!("interval errored; err={:?}\n", e));
+
+    tokio::run(task);
+}
+
+fn create_and_multiply() {
     let node = helium::Node::new("localhost", 4001);
 
     let mut last_height = node.status().unwrap().chain_height;

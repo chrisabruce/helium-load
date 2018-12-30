@@ -8,3 +8,4 @@ edition = "2018"
 helium = { git = "https://github.com/chrisabruce/helium-rs" }
 rand = "0.6"
 tokio = "*"
+clap = "*"
