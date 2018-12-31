@@ -31,6 +31,14 @@ fn main() {
             .help("Select a trigger type, either on new block or on timed interval. (block | interval)")
             .takes_value(true),
         )
+        .arg(
+            Arg::with_name("interval")
+            .short("i")
+            .long("interval")
+            .value_name("INTERVAL")
+            .help("Sets the poll interval for checking block height or triggering the formula.")
+            .takes_value(true),
+        )
         .get_matches();
 
     let formula = matches.value_of("formula").unwrap_or("ping");
