@@ -23,10 +23,21 @@ fn main() {
                 .help("Which load formula to run: ping | pong | multiply")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("trigger")
+            .short("t")
+            .long("trigger")
+            .value_name("TRIGGER")
+            .help("Select a trigger type, either on new block or on timed interval. (block | interval)")
+            .takes_value(true),
+        )
         .get_matches();
 
     let formula = matches.value_of("formula").unwrap_or("ping");
     println!("Value for formula: {}", formula);
+
+    let trigger = matches.value_of("trigger").unwrap_or("block");
+    println!("Value for trigger: {}", trigger);
 
     match formula {
         "multiply" => create_and_multiply(),
