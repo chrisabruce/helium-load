@@ -7,9 +7,6 @@ use tokio::timer::Interval;
 
 use clap::{App, Arg};
 
-const POLL_INTERVAL: u64 = 10;
-const PAY_INTERVAL: u64 = 60;
-
 fn main() {
     let matches = App::new("Helium Load")
         .version("1.0")
@@ -36,7 +33,7 @@ fn main() {
             .short("i")
             .long("interval")
             .value_name("INTERVAL")
-            .help("Sets the poll interval for checking block height or triggering the formula.")
+            .help("Sets the poll interval in seconds for checking block height or triggering the formula.")
             .takes_value(true),
         )
         .get_matches();
@@ -47,29 +44,36 @@ fn main() {
     let trigger = matches.value_of("trigger").unwrap_or("block");
     println!("Value for trigger: {}", trigger);
 
+    let poll_interval = matches
+        .value_of("interval")
+        .unwrap_or("10")
+        .parse::<u64>()
+        .unwrap();
+    println!("Value for polling interval: {}", poll_interval);
+
     match formula {
-        "multiply" => create_and_multiply(),
-        "pong" => pong(),
-        _ => ping(),
+        "multiply" => create_and_multiply(poll_interval),
+        "pong" => pong(poll_interval),
+        _ => ping(poll_interval),
     };
 }
 
-fn pong() {
+fn pong(interval: u64) {
     let node = helium::Node::new("localhost", 4001);
     let accounts = node.list_accounts().unwrap();
 
-    print!("Found {} account(s).\n", accounts.len());
-    if accounts.len() < 1 {
+    println!("Found {} account(s).", accounts.len());
+    if accounts.is_empty() {
         panic!("Requires two existing accounts.");
     }
 
-    let interval = Duration::new(PAY_INTERVAL, 0);
+    let interval = Duration::new(interval, 0);
     let task = Interval::new_interval(interval)
         .for_each(move |_| {
             let mut rng = rand::thread_rng();
             let amt: u64 = rng.gen_range(10_000, 100_000);
 
-            print!("Paying: {}\n", amt);
+            println!("Paying: {}", amt);
             node.pay(&accounts[0].address, &accounts[1].address, amt)
                 .unwrap();
 
@@ -78,23 +82,23 @@ fn pong() {
 
             Ok(())
         })
-        .map_err(|e| print!("interval errored; err={:?}\n", e));
+        .map_err(|e| println!("interval errored; err={:?}", e));
 
     tokio::run(task);
 }
 
-fn ping() {
+fn ping(interval: u64) {
     let node = helium::Node::new("localhost", 4001);
     let accounts = node.list_accounts().unwrap();
 
-    print!("Found {} account(s).\n", accounts.len());
-    if accounts.len() < 1 {
+    println!("Found {} account(s).", accounts.len());
+    if accounts.is_empty() {
         panic!("Requires two existing accounts.");
     }
 
     let mut last_height = node.status().unwrap().chain_height;
 
-    let interval = Duration::new(POLL_INTERVAL, 0);
+    let interval = Duration::new(interval, 0);
     let task = Interval::new_interval(interval)
         .for_each(move |_| {
             println!("Checking...");
@@ -104,7 +108,7 @@ fn ping() {
                 let mut rng = rand::thread_rng();
                 let amt: u64 = rng.gen_range(10_000, 100_000);
 
-                print!("Paying: {}\n", amt);
+                println!("Paying: {}", amt);
                 node.pay(&accounts[0].address, &accounts[1].address, amt)
                     .unwrap();
 
@@ -119,12 +123,12 @@ fn ping() {
     tokio::run(task);
 }
 
-fn create_and_multiply() {
+fn create_and_multiply(interval: u64) {
     let node = helium::Node::new("localhost", 4001);
 
     let mut last_height = node.status().unwrap().chain_height;
 
-    let interval = Duration::new(POLL_INTERVAL, 0);
+    let interval = Duration::new(interval, 0);
     let task = Interval::new_interval(interval)
         .for_each(move |_| {
             println!("Checking...");
