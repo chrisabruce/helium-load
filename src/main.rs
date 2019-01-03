@@ -58,6 +58,7 @@ fn main() {
     };
 }
 
+// Pays back and forth between two accounts.
 fn pong(interval: u64) {
     let node = helium::Node::new("localhost", 4001);
     let accounts = node.list_accounts().unwrap();
