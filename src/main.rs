@@ -17,7 +17,7 @@ fn main() {
                 .short("f")
                 .long("formula")
                 .value_name("FORMULA")
-                .help("Which load formula to run: ping | pong | multiply")
+                .help("Which load formula to run: ping | pong | multiply | multiping")
                 .takes_value(true),
         )
         .arg(
@@ -54,6 +54,7 @@ fn main() {
     match formula {
         "multiply" => create_and_multiply(poll_interval),
         "pong" => pong(poll_interval),
+        "multiping" => multiping(poll_interval),
         _ => ping(poll_interval),
     };
 }
@@ -117,6 +118,79 @@ fn ping(interval: u64) {
                     .unwrap();
                 last_height = cur_height;
             }
+            Ok(())
+        })
+        .map_err(|e| println!("interval errored; err={:?}", e));
+
+    tokio::run(task);
+}
+
+fn multiping(interval: u64) {
+    let min_accts = 10;
+
+    let node1 = helium::Node::new("localhost", 4001);
+    let node2 = helium::Node::new("localhost", 4002);
+    let node3 = helium::Node::new("localhost", 4003);
+    let node4 = helium::Node::new("localhost", 4004);
+    let node5 = helium::Node::new("localhost", 4005);
+    let nodes: Vec<helium::Node> = vec![node1, node2, node3, node4, node5];
+    let mut last_height = nodes[0].status().unwrap().chain_height;
+
+    // Make sure we have enough accounts
+    for n in nodes {
+        let accts = n.list_accounts().unwrap();
+        let i = min_accts - accts.len();
+
+        if i > 0 {
+            for _ in 0..i {
+                let a = n.create_account().unwrap();
+                println!("Created account: {}", a.address);
+            }
+        }
+    }
+
+    // Loop on interval and make payments
+    let interval = Duration::new(interval, 0);
+    let task = Interval::new_interval(interval)
+        .for_each(move |_| {
+            let node1 = helium::Node::new("localhost", 4002);
+
+            println!("Checking...");
+            let cur_height = node1.status().unwrap().node_height; // want to make sure node is current
+            if cur_height > last_height {
+                println!("New height: {}", cur_height);
+
+                let node2 = helium::Node::new("localhost", 4003);
+                let node3 = helium::Node::new("localhost", 4004);
+                let node4 = helium::Node::new("localhost", 4005);
+                let node5 = helium::Node::new("localhost", 4006);
+                let nodes: Vec<&helium::Node> = vec![&node1, &node2, &node3, &node4, &node5];
+
+                let mut all_accts: Vec<(helium::Account, &helium::Node)> = Vec::new();
+                for n in nodes {
+                    for a in n.list_accounts().unwrap() {
+                        println!("Account: {}\t\tBal: {}", a.address, a.balance);
+                        all_accts.push((a, n));
+                    }
+                }
+
+                for (i, (a, n)) in all_accts.iter().enumerate() {
+                    if a.balance > 0 {
+                        let to_acct = if all_accts.len() > i + 1 {
+                            &all_accts[i + 1].0
+                        } else {
+                            &all_accts[0].0
+                        };
+
+                        let amt = a.balance / 2;
+
+                        n.pay(&a.address, &to_acct.address, amt).unwrap();
+                        println!("Paid {} from {} to {}", amt, &a.address, &to_acct.address);
+                    }
+                }
+                last_height = cur_height;
+            }
+
             Ok(())
         })
         .map_err(|e| println!("interval errored; err={:?}", e));
