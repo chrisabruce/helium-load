@@ -126,13 +126,13 @@ fn ping(interval: u64) {
 }
 
 fn multiping(interval: u64) {
-    let min_accts = 10;
+    let min_accts = 2;
 
-    let node1 = helium::Node::new("localhost", 4001);
-    let node2 = helium::Node::new("localhost", 4002);
-    let node3 = helium::Node::new("localhost", 4003);
-    let node4 = helium::Node::new("localhost", 4004);
-    let node5 = helium::Node::new("localhost", 4005);
+    let node1 = helium::Node::new("localhost", 4002);
+    let node2 = helium::Node::new("localhost", 4003);
+    let node3 = helium::Node::new("localhost", 4004);
+    let node4 = helium::Node::new("localhost", 4005);
+    let node5 = helium::Node::new("localhost", 4006);
     let nodes: Vec<helium::Node> = vec![node1, node2, node3, node4, node5];
     let mut last_height = nodes[0].status().unwrap().chain_height;
 
@@ -175,7 +175,7 @@ fn multiping(interval: u64) {
                 }
 
                 for (i, (a, n)) in all_accts.iter().enumerate() {
-                    if a.balance > 0 {
+                    if a.balance > 1 {
                         let to_acct = if all_accts.len() > i + 1 {
                             &all_accts[i + 1].0
                         } else {
