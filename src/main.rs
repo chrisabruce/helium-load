@@ -36,6 +36,14 @@ fn main() {
             .help("Sets the poll interval in seconds for checking block height or triggering the formula.")
             .takes_value(true),
         )
+        .arg(
+            Arg::with_name("accounts")
+            .short("a")
+            .long("accounts")
+            .value_name("NUM_ACCOUNTS")
+            .help("Sets the number of accounts to use for the specified formula.  Defaults to 2.")
+            .takes_value(true),
+        )
         .get_matches();
 
     let formula = matches.value_of("formula").unwrap_or("ping");
@@ -50,6 +58,13 @@ fn main() {
         .parse::<u64>()
         .unwrap();
     println!("Value for polling interval: {}", poll_interval);
+
+    let account_num = matches
+        .value_of("accounts")
+        .unwrap_or("10")
+        .parse::<u64>()
+        .unwrap();
+    println!("Value for account number: {}", account_num);
 
     match formula {
         "multiply" => create_and_multiply(poll_interval),
