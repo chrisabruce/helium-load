@@ -6,6 +6,6 @@ edition = "2018"
 
 [dependencies]
 helium = { git = "https://github.com/chrisabruce/helium-rs" }
-rand = "0.6"
-tokio = "=0.1.11"
+rand = "0.7.3"
+tokio = "0.2.11"
 clap = "*"
