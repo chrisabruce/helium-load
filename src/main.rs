@@ -1,11 +1,10 @@
-use helium;
+use helium_wallet;
 
+use clap::{App, Arg};
 use rand::prelude::*;
 use std::time::Duration;
 use tokio::prelude::*;
 use tokio::timer::Interval;
-
-use clap::{App, Arg};
 
 fn main() {
     let matches = App::new("Helium Load")

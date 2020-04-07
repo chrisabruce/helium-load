@@ -5,7 +5,8 @@ authors = ["chris <chris@chrisbruce.com>"]
 edition = "2018"
 
 [dependencies]
-helium = { git = "https://github.com/chrisabruce/helium-rs" }
-rand = "0.7.3"
-tokio = "0.2.11"
 clap = "*"
+dotenv = "*"
+helium-wallet = { git = "https://github.com/helium/helium-wallet-rs.git" }
+rand = "0.7.3"
+tokio = "0.2"
