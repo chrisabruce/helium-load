@@ -1,8 +1,14 @@
-use helium_wallet;
+mod loader;
+
+use dotenv::dotenv;
+use loader::Load;
+use std::env;
 
 use clap::{App, Arg};
 
 fn main() {
+    dotenv().ok();
+
     let matches = App::new("Helium Load")
         .version("1.0")
         .author("Chris Bruce <chris@helium.com>")
@@ -61,10 +67,11 @@ fn main() {
         .unwrap();
     println!("Value for account number: {}", account_num);
 
-    match formula {
-        "multiply" => create_and_multiply(poll_interval),
-        "pong" => pong(poll_interval),
-        "multiping" => multiping(poll_interval),
-        _ => ping(poll_interval),
+    let api_url = env::var("API_URL").expect("Missing API_URL env var.");
+    let password = env::var("PASSWORD").expect("Missing PASSWORD env var.");
+    let load = Load::new(&api_url, &password);
+
+    let _ = match formula {
+        _ => load.start_pong(poll_interval),
     };
 }
