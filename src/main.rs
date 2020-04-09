@@ -119,6 +119,7 @@ fn fan_out() {
     for payer_wallet in wallets {
         if let Ok(payer_address) = payer_wallet.address() {
             let share: Hnt = Hnt::from_bones(get_account_balance(&payer_address) / wallet_count);
+            println!("Paying out: {:?} from {}", share, payer_address);
             if share.to_bones() > 0 {
                 let payees: Vec<cmd_pay::Payee> = wallets
                     .iter()
