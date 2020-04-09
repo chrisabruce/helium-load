@@ -11,6 +11,8 @@ use helium_wallet::{
 use helium_wallet::{result::Result, traits::ReadWrite, wallet::Wallet};
 use loader::Load;
 use std::str::FromStr;
+use std::thread;
+use std::time::{Duration, Instant};
 use std::{env, fs, path::PathBuf, process};
 
 fn main() {
@@ -19,33 +21,25 @@ fn main() {
     let api_url = api_url();
     let password = password();
 
-    create_wallets(25, &password);
-    let wallets = &collect_wallets();
-    let wallet_count: u64 = wallets.len() as u64;
+    create_wallets(50, &password);
 
-    for payer_wallet in wallets {
-        if let Ok(payer_address) = payer_wallet.address() {
-            let share = get_account_balance(&payer_address) / wallet_count;
-            if share > 0 {
-                let payees: Vec<cmd_pay::Payee> = wallets
-                    .iter()
-                    .filter(|w| w.address().is_ok() && w.address().unwrap() != payer_address)
-                    .map(|w| {
-                        Payee::from_str(&format!("{:?}={:?}", w.address().unwrap(), share)).unwrap()
-                    })
-                    .collect();
+    let wallets = collect_wallets();
 
-                let r = cmd_pay::cmd_pay(
-                    api_url.clone(),
-                    payer_wallet,
-                    &password,
-                    payees,
-                    true,
-                    false,
-                );
+    let key_wallet = wallets.first().unwrap();
 
-                println!("Payment result: {:?}", r);
+    loop {
+        print_all_balances();
+        println!("Fanning out...");
+        let watch_bal = get_wallet_balance(&key_wallet);
+        fan_out();
+
+        loop {
+            if watch_bal != get_wallet_balance(&key_wallet) {
+                break;
             }
+
+            println!("Sleeping...");
+            thread::sleep(Duration::from_secs(30));
         }
     }
 }
@@ -77,8 +71,12 @@ fn collect_wallets() -> Vec<Wallet> {
     wallets
 }
 
-fn fan_out(wallets: &Vec<Wallet>, api_url: &str, password: &str) {
-    for w in wallets {}
+fn collect_addresses() -> Vec<String> {
+    collect_wallets()
+        .iter()
+        .filter(|w| w.address().is_ok())
+        .map(|w| w.address().unwrap())
+        .collect()
 }
 
 fn get_account(address: &str) -> Option<Account> {
@@ -97,10 +95,46 @@ fn get_account_balance(address: &str) -> u64 {
     }
 }
 
+fn get_wallet_balance(wallet: &Wallet) -> u64 {
+    get_account_balance(&wallet.address().unwrap())
+}
+
 fn api_url() -> String {
     env::var("API_URL").expect("Missing API_URL env var.")
 }
 
 fn password() -> String {
     env::var("PASSWORD").expect("Missing PASSWORD env var.")
+}
+
+fn print_all_balances() {
+    let addresses = collect_addresses();
+    cmd_balance::cmd_balance(api_url(), addresses);
+}
+
+fn fan_out() {
+    let wallets = &collect_wallets();
+    let wallet_count: u64 = wallets.len() as u64;
+
+    for payer_wallet in wallets {
+        if let Ok(payer_address) = payer_wallet.address() {
+            let share: Hnt = Hnt::from_bones(get_account_balance(&payer_address) / wallet_count);
+            if share.to_bones() > 0 {
+                let payees: Vec<cmd_pay::Payee> = wallets
+                    .iter()
+                    .filter(|w| w.address().is_ok() && w.address().unwrap() != payer_address)
+                    .map(|w| {
+                        Payee::from_str(&format!("{}={}", w.address().unwrap(), share.to_string()))
+                            .unwrap()
+                    })
+                    .collect();
+
+                let now = Instant::now();
+                let r = cmd_pay::cmd_pay(api_url(), payer_wallet, &password(), payees, true, true);
+
+                println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
+                println!("Payment result: {:?}", r);
+            }
+        }
+    }
 }
