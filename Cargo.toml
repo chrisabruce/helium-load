@@ -7,6 +7,8 @@ edition = "2018"
 [dependencies]
 clap = "*"
 dotenv = "*"
+glob = "0.3.0"
+helium-api = { git = "https://github.com/helium/helium-api-rs", tag="0.2.0" }
 helium-wallet = { git = "https://github.com/helium/helium-wallet-rs.git" }
 rand = "0.7.3"
 tokio = "0.2.11"
