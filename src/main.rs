@@ -4,20 +4,25 @@ mod cmd;
 use bank::Banker;
 use clap::Clap;
 use dotenv::dotenv;
-use std::{env, thread, time::Duration};
+use std::env;
 
 fn main() {
     dotenv().ok();
-    let opts = cmd::Opts::parse();
 
-    let banker = Banker::new(&api_url(), &password());
+    let opts = cmd::Opts::parse();
+    let banker = Banker::new(&api_url(), &password(), &opts.working_dir);
 
     match opts.subcmd {
         cmd::SubCommand::Create(opts) => banker.create_wallets(opts.count),
         cmd::SubCommand::Balance => banker.print_all_balances(),
-        cmd::SubCommand::Fanout => {
-            run_fanout(&banker);
+        cmd::SubCommand::Fanout => banker.fan_out(),
+        cmd::SubCommand::MaxBalance => {
+            let rich_one = banker.max_bal_wallet();
+            let addr = rich_one.address().unwrap();
+            let bal = banker.get_wallet_balance(&rich_one);
+            println!("Richest Wallet: {}: {}", addr, bal);
         }
+        cmd::SubCommand::Seed => banker.seed(),
     }
 }
 
@@ -27,26 +32,4 @@ fn api_url() -> String {
 
 fn password() -> String {
     env::var("PASSWORD").expect("Missing PASSWORD env var.")
-}
-
-fn run_fanout(banker: &Banker) {
-    let wallets = banker.collect_wallets();
-
-    let key_wallet = wallets.first().unwrap();
-
-    loop {
-        banker.print_all_balances();
-        println!("Fanning out...");
-        let watch_bal = banker.get_wallet_balance(&key_wallet);
-        banker.fan_out();
-
-        loop {
-            if watch_bal != banker.get_wallet_balance(&key_wallet) {
-                break;
-            }
-
-            println!("Sleeping...");
-            thread::sleep(Duration::from_secs(30));
-        }
-    }
 }

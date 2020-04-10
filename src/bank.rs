@@ -3,7 +3,14 @@ use helium_api::{Account, Client, Hnt};
 use helium_wallet::{
     cmd_balance, cmd_create, cmd_pay, cmd_pay::Payee, traits::ReadWrite, wallet::Wallet,
 };
-use std::{fs, path::PathBuf, str::FromStr, time::Instant};
+use itertools::Itertools;
+use std::{
+    fs,
+    path::PathBuf,
+    str::FromStr,
+    thread,
+    time::{Duration, Instant},
+};
 
 pub struct Banker {
     api_url: String,
@@ -13,11 +20,11 @@ pub struct Banker {
 }
 
 impl Banker {
-    pub fn new(api_url: &str, password: &str) -> Self {
+    pub fn new(api_url: &str, password: &str, working_dir: &str) -> Self {
         Self {
             api_url: api_url.to_string(),
             password: password.to_string(),
-            working_dir: ".".to_string(),
+            working_dir: working_dir.to_string(),
             client: Client::new_with_base_url(api_url.to_string()),
         }
     }
@@ -78,6 +85,16 @@ impl Banker {
         self.get_account_balance(&wallet.address().unwrap())
     }
 
+    /// Returns the wallet with the highest balance
+    pub fn max_bal_wallet(&self) -> Wallet {
+        let wallets = self.collect_wallets();
+
+        wallets
+            .into_iter()
+            .max_by(|x, y| self.get_wallet_balance(x).cmp(&self.get_wallet_balance(y)))
+            .unwrap()
+    }
+
     pub fn print_all_balances(&self) {
         let addresses = self.collect_addresses();
         let _ = cmd_balance::cmd_balance(self.api_url.clone(), addresses);
@@ -85,41 +102,61 @@ impl Banker {
 
     pub fn fan_out(&self) {
         let wallets = &self.collect_wallets();
-        let wallet_count: u64 = wallets.len() as u64;
+        let key_wallet = wallets.first().unwrap();
 
-        for payer_wallet in wallets {
-            if let Ok(payer_address) = payer_wallet.address() {
-                let share: Hnt =
-                    Hnt::from_bones(self.get_account_balance(&payer_address) / wallet_count);
-                if share.to_bones() > 0 {
-                    println!("Paying out: {:?} from {}", share, payer_address);
-                    let payees: Vec<cmd_pay::Payee> = wallets
-                        .iter()
-                        .filter(|w| w.address().is_ok() && w.address().unwrap() != payer_address)
-                        .map(|w| {
-                            Payee::from_str(&format!(
-                                "{}={}",
-                                w.address().unwrap(),
-                                share.to_string()
-                            ))
-                            .unwrap()
-                        })
-                        .collect();
+        loop {
+            self.print_all_balances();
+            println!("Fanning out...");
+            let watch_bal = self.get_wallet_balance(&key_wallet);
+            let wallet_count: u64 = wallets.len() as u64;
 
-                    let now = Instant::now();
-                    let r = cmd_pay::cmd_pay(
-                        self.api_url.clone(),
-                        payer_wallet,
-                        &self.password,
-                        payees,
-                        true,
-                        true,
-                    );
+            for payer_wallet in wallets {
+                if let Ok(payer_address) = payer_wallet.address() {
+                    let share: Hnt =
+                        Hnt::from_bones(self.get_account_balance(&payer_address) / wallet_count);
+                    if share.to_bones() > 0 {
+                        println!("Paying out: {:?} from {}", share, payer_address);
+                        let payees: Vec<cmd_pay::Payee> = wallets
+                            .iter()
+                            .filter(|w| {
+                                w.address().is_ok() && w.address().unwrap() != payer_address
+                            })
+                            .map(|w| {
+                                Payee::from_str(&format!(
+                                    "{}={}",
+                                    w.address().unwrap(),
+                                    share.to_string()
+                                ))
+                                .unwrap()
+                            })
+                            .collect();
 
-                    println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
-                    println!("Payment result: {:?}", r);
+                        let now = Instant::now();
+                        let r = cmd_pay::cmd_pay(
+                            self.api_url.clone(),
+                            payer_wallet,
+                            &self.password,
+                            payees,
+                            true,
+                            true,
+                        );
+
+                        println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
+                        println!("Payment result: {:?}", r);
+                    }
                 }
+            }
+
+            loop {
+                if watch_bal != self.get_wallet_balance(&key_wallet) {
+                    break;
+                }
+
+                println!("Sleeping...");
+                thread::sleep(Duration::from_secs(30));
             }
         }
     }
+
+    pub fn seed(&self) {}
 }

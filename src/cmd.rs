@@ -25,6 +25,14 @@ pub enum SubCommand {
     /// Distributes each wallet's balance amongst all other wallets
     #[clap(name = "fanout")]
     Fanout,
+
+    // Prints the balance of all wallets
+    #[clap(name = "max_balance")]
+    MaxBalance,
+
+    /// Find wallet with highest balance and seeds all other wallets
+    #[clap(name = "seed")]
+    Seed,
 }
 
 /// A subcommand for controlling wallet creation
