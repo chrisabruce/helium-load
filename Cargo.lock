@@ -590,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "helium-load"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap 3.0.0-beta.1 (git+https://github.com/clap-rs/clap/)",
  "dotenv 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
