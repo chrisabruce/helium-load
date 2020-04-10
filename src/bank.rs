@@ -12,6 +12,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+const MAX_MULTIPAY: usize = 50;
+
 pub struct Banker {
     api_url: String,
     password: String,
@@ -130,19 +132,20 @@ impl Banker {
                                 .unwrap()
                             })
                             .collect();
+                        for chunk in &payees.into_iter().chunks(MAX_MULTIPAY) {
+                            let now = Instant::now();
+                            let r = cmd_pay::cmd_pay(
+                                self.api_url.clone(),
+                                payer_wallet,
+                                &self.password,
+                                chunk.collect(),
+                                true,
+                                true,
+                            );
 
-                        let now = Instant::now();
-                        let r = cmd_pay::cmd_pay(
-                            self.api_url.clone(),
-                            payer_wallet,
-                            &self.password,
-                            payees,
-                            true,
-                            true,
-                        );
-
-                        println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
-                        println!("Payment result: {:?}", r);
+                            println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
+                            println!("Payment result: {:?}", r);
+                        }
                     }
                 }
             }
