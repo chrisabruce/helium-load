@@ -161,5 +161,38 @@ impl Banker {
         }
     }
 
-    pub fn seed(&self) {}
+    pub fn seed(&self) {
+        let wallets = &self.collect_wallets();
+        let seed_wallet = self.max_bal_wallet();
+        let seed_address = seed_wallet.address().unwrap();
+
+        let wallet_count: u64 = wallets.len() as u64;
+
+        let share: Hnt = Hnt::from_bones(self.get_account_balance(&seed_address) / wallet_count);
+        if share.to_bones() > 0 {
+            println!("Paying out: {:?} from {}", share, seed_address);
+            let payees: Vec<cmd_pay::Payee> = wallets
+                .iter()
+                .filter(|w| w.address().is_ok() && w.address().unwrap() != seed_address)
+                .map(|w| {
+                    Payee::from_str(&format!("{}={}", w.address().unwrap(), share.to_string()))
+                        .unwrap()
+                })
+                .collect();
+            for chunk in &payees.into_iter().chunks(MAX_MULTIPAY) {
+                let now = Instant::now();
+                let r = cmd_pay::cmd_pay(
+                    self.api_url.clone(),
+                    &seed_wallet,
+                    &self.password,
+                    chunk.collect(),
+                    true,
+                    true,
+                );
+
+                println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
+                println!("Payment result: {:?}", r);
+            }
+        }
+    }
 }
