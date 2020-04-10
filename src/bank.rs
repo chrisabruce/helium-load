@@ -51,7 +51,7 @@ impl Banker {
         for entry in glob(&path.to_string_lossy()).expect("Failed to read glob pattern") {
             match entry {
                 Ok(path) => {
-                    println!("Found wallet: {:?}", path.display());
+                    //println!("Found wallet: {:?}", path.display());
                     let mut reader = fs::File::open(path).unwrap();
                     wallets.push(Wallet::read(&mut reader).unwrap());
                 }
@@ -114,10 +114,10 @@ impl Banker {
 
             for payer_wallet in wallets {
                 if let Ok(payer_address) = payer_wallet.address() {
-                    let share: Hnt =
-                        Hnt::from_bones(self.get_account_balance(&payer_address) / wallet_count);
-                    if share.to_bones() > 0 {
-                        println!("Paying out: {:?} from {}", share, payer_address);
+                    let bones = self.get_account_balance(&payer_address) / wallet_count;
+                    let hnt: Hnt = Hnt::from_bones(bones);
+                    if bones > 0 {
+                        println!("Paying out: {} from {}", hnt.to_string(), payer_address);
                         let payees: Vec<cmd_pay::Payee> = wallets
                             .iter()
                             .filter(|w| {
@@ -127,7 +127,7 @@ impl Banker {
                                 Payee::from_str(&format!(
                                     "{}={}",
                                     w.address().unwrap(),
-                                    share.to_string()
+                                    hnt.to_string()
                                 ))
                                 .unwrap()
                             })
@@ -167,15 +167,16 @@ impl Banker {
         let seed_address = seed_wallet.address().unwrap();
 
         let wallet_count: u64 = wallets.len() as u64;
+        let bones = self.get_account_balance(&seed_address) / wallet_count;
 
-        let share: Hnt = Hnt::from_bones(self.get_account_balance(&seed_address) / wallet_count);
-        if share.to_bones() > 0 {
-            println!("Paying out: {:?} from {}", share, seed_address);
+        let hnt: Hnt = Hnt::from_bones(bones);
+        if bones > 0 {
+            println!("Paying out: {} from {}", hnt.to_string(), seed_address);
             let payees: Vec<cmd_pay::Payee> = wallets
                 .iter()
                 .filter(|w| w.address().is_ok() && w.address().unwrap() != seed_address)
                 .map(|w| {
-                    Payee::from_str(&format!("{}={}", w.address().unwrap(), share.to_string()))
+                    Payee::from_str(&format!("{}={}", w.address().unwrap(), hnt.to_string()))
                         .unwrap()
                 })
                 .collect();
@@ -187,12 +188,74 @@ impl Banker {
                     &self.password,
                     chunk.collect(),
                     true,
-                    true,
+                    false,
                 );
 
                 println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
                 println!("Payment result: {:?}", r);
             }
         }
+    }
+
+    /// Collects all wallet balances into a single wallet
+    pub fn collect(&self, address: &str) {
+        let wallets = &self.collect_wallets();
+        let payee_wallet = wallets
+            .into_iter()
+            .find(|x| x.address().unwrap() == address)
+            .unwrap();
+
+        for payer_wallet in wallets {
+            if payer_wallet.address().unwrap() != address {
+                let bones = self.get_wallet_balance(&payer_wallet);
+                self.pay(bones, &payer_wallet, payee_wallet)
+            }
+        }
+    }
+
+    pub fn pay(&self, bones: u64, payer: &Wallet, payee: &Wallet) {
+        if bones > 0 {
+            let hnt = Hnt::from_bones(bones);
+            let payer_address = payer.address().unwrap();
+            let payee_address = payee.address().unwrap();
+
+            println!("Sending {} from {}", hnt.to_string(), payer_address);
+            let payee = Payee::from_str(&format!("{}={}", payee_address, hnt.to_string())).unwrap();
+            println!("Payee: {:?}", payee);
+
+            let now = Instant::now();
+            let r = cmd_pay::cmd_pay(
+                self.api_url.clone(),
+                &payer,
+                &self.password,
+                vec![payee],
+                true,
+                false,
+            );
+
+            println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
+            println!("Payment result: {:?}", r);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_payee_amount() {
+        let addr = "13Ad3bq7UDGYUG7xkKGAQX3vJkWQ3B5ERR3FGhhvqnEktnRNtw2";
+        let bones = 3774430;
+
+        let payee = Payee::from_str(&format!("{}={}", addr, bones));
+
+        assert!(payee.is_ok());
+    }
+
+    #[test]
+    fn test_hnt_to_bones() {
+        let hnt = Hnt::from_bones(203130111);
+        assert_eq!("2.03130111", format!("{}", hnt.to_string()));
     }
 }

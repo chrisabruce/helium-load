@@ -8,6 +8,10 @@ pub struct Opts {
     /// Sets the working directory (place where all wallet files are)
     #[clap(short = "d", long = "dir", default_value = ".")]
     pub working_dir: String,
+    /// Group into n wallets per thread, othwise use all
+    /// wallets in single thread
+    #[clap(short = "n", long = "num-wallets", default_value = "0")]
+    pub num_wallets: usize,
     #[clap(subcommand)]
     pub subcmd: SubCommand,
 }
@@ -15,8 +19,12 @@ pub struct Opts {
 #[derive(Clap)]
 pub enum SubCommand {
     /// Prints the balance of all wallets
-    #[clap(name = "balance")]
-    Balance,
+    #[clap(name = "balances")]
+    Balances,
+
+    /// Collect all wallet balances into a single wallet
+    #[clap(name = "collect")]
+    Collect(CollectOpts),
 
     /// Create x number of wallets
     #[clap(name = "create")]
@@ -27,7 +35,7 @@ pub enum SubCommand {
     Fanout,
 
     // Prints the balance of all wallets
-    #[clap(name = "max_balance")]
+    #[clap(name = "max-balance")]
     MaxBalance,
 
     /// Find wallet with highest balance and seeds all other wallets
@@ -40,4 +48,11 @@ pub enum SubCommand {
 pub struct CreateOpts {
     /// The number of wallets to create
     pub count: usize,
+}
+
+/// A subcommand for collecting wallet balances
+#[derive(Clap)]
+pub struct CollectOpts {
+    /// The address to collect all balances into
+    pub address: String,
 }

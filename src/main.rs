@@ -14,7 +14,8 @@ fn main() {
 
     match opts.subcmd {
         cmd::SubCommand::Create(opts) => banker.create_wallets(opts.count),
-        cmd::SubCommand::Balance => banker.print_all_balances(),
+        cmd::SubCommand::Balances => banker.print_all_balances(),
+        cmd::SubCommand::Collect(opts) => banker.collect(&opts.address),
         cmd::SubCommand::Fanout => banker.fan_out(),
         cmd::SubCommand::MaxBalance => {
             let rich_one = banker.max_bal_wallet();
