@@ -221,8 +221,6 @@ impl Banker {
 
             println!("Sending {} from {}", hnt.to_string(), payer_address);
             let payee = Payee::from_str(&format!("{}={}", payee_address, hnt.to_string())).unwrap();
-            println!("Payee: {:?}", payee);
-
             let now = Instant::now();
             let r = cmd_pay::cmd_pay(
                 self.api_url.clone(),
