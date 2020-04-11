@@ -10,7 +10,9 @@ fn main() {
     dotenv().ok();
 
     let opts = cmd::Opts::parse();
-    let banker = Banker::new(&api_url(), &password(), &opts.working_dir);
+    let banker = Banker::new(&api_url(), &password(), &opts.working_dir, opts.threads);
+
+    println!("\n{}\n", banker);
 
     match opts.subcmd {
         cmd::SubCommand::Create(opts) => banker.create_wallets(opts.count),

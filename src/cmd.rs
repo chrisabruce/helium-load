@@ -8,10 +8,11 @@ pub struct Opts {
     /// Sets the working directory (place where all wallet files are)
     #[clap(short = "d", long = "dir", default_value = ".")]
     pub working_dir: String,
-    /// Group into n wallets per thread, othwise use all
-    /// wallets in single thread
-    #[clap(short = "n", long = "num-wallets", default_value = "0")]
-    pub num_wallets: usize,
+    /// The number of threads to use while processing data.
+    /// NOTE: some processes can't make that much use of more than
+    /// 1 in order not to have nonce conflicts.
+    #[clap(short = "t", long = "threads", default_value = "1")]
+    pub threads: usize,
     #[clap(subcommand)]
     pub subcmd: SubCommand,
 }
