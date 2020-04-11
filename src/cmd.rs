@@ -11,7 +11,7 @@ pub struct Opts {
     /// The number of threads to use while processing data.
     /// NOTE: some processes can't make that much use of more than
     /// 1 in order not to have nonce conflicts.
-    #[clap(short = "t", long = "threads", default_value = "1")]
+    #[clap(short = "t", long = "threads", default_value = "4")]
     pub threads: usize,
     #[clap(subcommand)]
     pub subcmd: SubCommand,
@@ -35,7 +35,7 @@ pub enum SubCommand {
     #[clap(name = "fanout")]
     Fanout,
 
-    // Prints the balance of all wallets
+    /// Prints the wallet with the highest balance
     #[clap(name = "max-balance")]
     MaxBalance,
 
