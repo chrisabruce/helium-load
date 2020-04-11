@@ -25,7 +25,7 @@ fn main() {
             let bal = banker.get_wallet_balance(&rich_one);
             println!("Richest Wallet: {}: {}", addr, bal);
         }
-        cmd::SubCommand::Seed => banker.seed(),
+        cmd::SubCommand::Seed(opts) => banker.seed(opts.address),
     }
 }
 

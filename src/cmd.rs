@@ -40,8 +40,9 @@ pub enum SubCommand {
     MaxBalance,
 
     /// Find wallet with highest balance and seeds all other wallets
+    /// uless optional `address` provided, then will seed from that address.
     #[clap(name = "seed")]
-    Seed,
+    Seed(SeedOpts),
 }
 
 /// A subcommand for controlling wallet creation
@@ -56,4 +57,12 @@ pub struct CreateOpts {
 pub struct CollectOpts {
     /// The address to collect all balances into
     pub address: String,
+}
+
+/// A subcommand for seeding wallets
+#[derive(Clap)]
+pub struct SeedOpts {
+    /// An optional address to seed all balances from. If empty,
+    /// will seed from wallet with largest balance.
+    pub address: Option<String>,
 }

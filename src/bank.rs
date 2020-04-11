@@ -66,6 +66,12 @@ impl Banker {
         wallets
     }
 
+    pub fn wallet_from_address(&self, address: &str) -> Option<&Wallet> {
+        self.wallets
+            .iter()
+            .find(|x| x.address().unwrap() == address)
+    }
+
     pub fn collect_addresses(&self) -> Vec<String> {
         self.wallets
             .iter()
@@ -164,8 +170,14 @@ impl Banker {
         }
     }
 
-    pub fn seed(&self) {
-        let seed_wallet = self.max_bal_wallet();
+    /// Will take and evenly distribute funds from either the
+    /// highest balance wallet  or from the `from_address`
+    pub fn seed(&self, from_address: Option<String>) {
+        let seed_wallet = match from_address {
+            Some(address) => self.wallet_from_address(&address).unwrap(),
+            _ => self.max_bal_wallet(),
+        };
+
         let seed_address = seed_wallet.address().unwrap();
 
         let wallet_count: u64 = self.wallets.len() as u64;
