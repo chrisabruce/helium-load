@@ -4,6 +4,7 @@ use helium_wallet::{
     cmd_balance, cmd_create, cmd_pay, cmd_pay::Payee, traits::ReadWrite, wallet::Wallet,
 };
 use itertools::Itertools;
+use rayon::prelude::*;
 use std::{
     fmt, fs,
     path::PathBuf,
@@ -19,20 +20,24 @@ pub struct Banker {
     password: String,
     working_dir: String,
     threads: usize,
-    wallets: Vec<Wallet>,
-    client: Client,
+    key_paths: Vec<PathBuf>,
 }
 
 impl Banker {
     pub fn new(api_url: &str, password: &str, working_dir: &str, threads: usize) -> Self {
-        let wallets = Self::collect_wallets(working_dir);
+        // Set the global threads.  If `0` then uses number of threads equal to logical cores
+        if threads > 0 {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build_global()
+                .unwrap();
+        }
         Self {
             api_url: api_url.to_string(),
             password: password.to_string(),
             working_dir: working_dir.to_string(),
             threads: threads,
-            wallets: wallets,
-            client: Client::new_with_base_url(api_url.to_string()),
+            key_paths: Self::get_key_paths(working_dir),
         }
     }
 
@@ -46,34 +51,49 @@ impl Banker {
         }
     }
 
-    /// Find all .key files in dir
-    pub fn collect_wallets(dir: &str) -> Vec<Wallet> {
-        let mut wallets: Vec<Wallet> = vec![];
-
+    /// Finds and returns a list of all the keyfiles found
+    /// in the directory.
+    pub fn get_key_paths(dir: &str) -> Vec<PathBuf> {
         let mut path = PathBuf::from(dir);
         path.push("*.key");
+
+        let mut key_paths = vec![];
 
         for entry in glob(&path.to_string_lossy()).expect("Failed to read glob pattern") {
             match entry {
                 Ok(path) => {
+                    key_paths.push(path);
                     //println!("Found wallet: {:?}", path.display());
-                    let mut reader = fs::File::open(path).unwrap();
-                    wallets.push(Wallet::read(&mut reader).unwrap());
                 }
                 Err(e) => println!("{:?}", e),
             }
         }
-        wallets
+
+        key_paths
     }
 
-    pub fn wallet_from_address(&self, address: &str) -> Option<&Wallet> {
-        self.wallets
+    /// Loads a wallet from file path
+    pub fn load_wallet(key_file: &PathBuf) -> Wallet {
+        let mut reader = fs::File::open(key_file).unwrap();
+        Wallet::read(&mut reader).unwrap()
+    }
+
+    /// Get a list of wallets from key file paths
+    pub fn collect_wallets(&self) -> Vec<Wallet> {
+        self.key_paths
             .iter()
+            .map(|p| Self::load_wallet(p))
+            .collect()
+    }
+
+    pub fn wallet_from_address(&self, address: &str) -> Option<Wallet> {
+        self.collect_wallets()
+            .into_iter()
             .find(|x| x.address().unwrap() == address)
     }
 
     pub fn collect_addresses(&self) -> Vec<String> {
-        self.wallets
+        self.collect_wallets()
             .iter()
             .filter(|w| w.address().is_ok())
             .map(|w| w.address().unwrap())
@@ -81,7 +101,8 @@ impl Banker {
     }
 
     pub fn get_account(&self, address: &str) -> Option<Account> {
-        match self.client.get_account(&address) {
+        let client = Client::new_with_base_url(self.api_url.clone());
+        match client.get_account(&address) {
             Ok(account) => Some(account),
             _ => None,
         }
@@ -99,9 +120,9 @@ impl Banker {
     }
 
     /// Returns the wallet with the highest balance
-    pub fn max_bal_wallet(&self) -> &Wallet {
-        self.wallets
-            .iter()
+    pub fn max_bal_wallet(&self) -> Wallet {
+        self.collect_wallets()
+            .into_iter()
             .max_by(|x, y| self.get_wallet_balance(x).cmp(&self.get_wallet_balance(y)))
             .unwrap()
     }
@@ -112,16 +133,16 @@ impl Banker {
     }
 
     pub fn fan_out(&self) {
-        let wallets = &self.wallets;
+        let wallets = self.collect_wallets();
         let key_wallet = wallets.first().unwrap();
 
         loop {
             self.print_all_balances();
             println!("Fanning out...");
             let watch_bal = self.get_wallet_balance(&key_wallet);
-            let wallet_count: u64 = wallets.len() as u64;
+            let wallet_count: u64 = self.key_paths.len() as u64;
 
-            for payer_wallet in wallets {
+            for payer_wallet in self.collect_wallets() {
                 if let Ok(payer_address) = payer_wallet.address() {
                     let bones = self.get_account_balance(&payer_address) / wallet_count;
                     let hnt: Hnt = Hnt::from_bones(bones);
@@ -145,7 +166,7 @@ impl Banker {
                             let now = Instant::now();
                             let r = cmd_pay::cmd_pay(
                                 self.api_url.clone(),
-                                payer_wallet,
+                                &payer_wallet,
                                 &self.password,
                                 chunk.collect(),
                                 true,
@@ -160,6 +181,7 @@ impl Banker {
             }
 
             loop {
+                //TODO fix this as balance might remain same
                 if watch_bal != self.get_wallet_balance(&key_wallet) {
                     break;
                 }
@@ -180,14 +202,14 @@ impl Banker {
 
         let seed_address = seed_wallet.address().unwrap();
 
-        let wallet_count: u64 = self.wallets.len() as u64;
+        let wallet_count: u64 = self.key_paths.len() as u64;
         let bones = self.get_account_balance(&seed_address) / wallet_count;
 
         let hnt: Hnt = Hnt::from_bones(bones);
         if bones > 0 {
             println!("Paying out: {} from {}", hnt.to_string(), seed_address);
             let payees: Vec<cmd_pay::Payee> = self
-                .wallets
+                .collect_wallets()
                 .iter()
                 .filter(|w| w.address().is_ok() && w.address().unwrap() != seed_address)
                 .map(|w| {
@@ -214,18 +236,14 @@ impl Banker {
 
     /// Collects all wallet balances into a single wallet
     pub fn collect(&self, address: &str) {
-        let payee_wallet = self
-            .wallets
-            .iter()
-            .find(|x| x.address().unwrap() == address)
-            .unwrap();
-
-        for payer_wallet in &self.wallets {
-            if payer_wallet.address().unwrap() != address {
+        self.key_paths.par_iter().for_each(|p| {
+            let payee_wallet = self.wallet_from_address(address).unwrap();
+            let payer_wallet = Self::load_wallet(p);
+            if payer_wallet.address().unwrap() != payee_wallet.address().unwrap() {
                 let bones = self.get_wallet_balance(&payer_wallet);
                 self.pay(bones, &payer_wallet, &payee_wallet)
-            }
-        }
+            };
+        });
     }
 
     pub fn pay(&self, bones: u64, payer: &Wallet, payee: &Wallet) {
@@ -257,7 +275,7 @@ impl fmt::Display for Banker {
         write!(
             f,
             "{} wallets, in the \"{}\" directory using {} with {} threads.",
-            self.wallets.len(),
+            self.key_paths.len(),
             self.working_dir,
             self.api_url,
             self.threads
