@@ -49,7 +49,7 @@ impl Banker {
 
     pub fn create_wallets(&self, count: usize) {
         for i in 1..=count {
-            let n = format!("wallet_{:04}.key", i);
+            let n = format!("wallet_{:05}.key", i);
             let path = PathBuf::from(n);
             if cmd_create::cmd_basic(&self.password, 2, path.clone(), false, None).is_err() {
                 println!("{:?} already exists.", path.display())
@@ -228,7 +228,90 @@ impl Banker {
 
     /// Seeds with independent process, will sleep until
     /// seed accounts are complete.
-    pub fn seed_independent(&self, from_address: &str) {}
+    pub fn seed_independent(&self, from_address: &str) {
+        let mut seeder_keys: Vec<PathBuf> = vec![];
+        let mut seedable_keys: Vec<PathBuf> = vec![];
+
+        // One list of payers and one list of receivers
+        for key_path in &self.key_paths {
+            if Self::load_wallet(&key_path).address().unwrap() == from_address {
+                seeder_keys.push(key_path.clone());
+            } else {
+                seedable_keys.push(key_path.clone());
+            }
+        }
+
+        // loop and drain the seedable_keys as payments are sent
+        while seedable_keys.len() > 0 {
+            // each seeder will pay a range of receivers
+            // this drains the seedable list
+            let payments: Vec<(PathBuf, Vec<PathBuf>)> = seeder_keys
+                .iter()
+                .map(|p| {
+                    let mut range = MAX_MULTIPAY;
+                    if range > seedable_keys.len() {
+                        range = seedable_keys.len();
+                    }
+                    (p.clone(), seedable_keys.drain(0..range).collect())
+                })
+                .collect();
+
+            // Lets loop through each payer and pay
+            payments.par_iter().for_each(|payment| {
+                let seed_wallet = Self::load_wallet(&payment.0);
+                let seed_address = seed_wallet.address().unwrap();
+                let seed_bal = self.get_account_balance(&seed_address);
+
+                let wallet_count: u64 = payment.1.len() as u64;
+                let bones = seed_bal / wallet_count;
+
+                let hnt: Hnt = Hnt::from_bones(bones);
+                if bones > 0 {
+                    println!("Paying out: {} from {}", hnt.to_string(), seed_address);
+                    let payees: Vec<cmd_pay::Payee> = payment
+                        .1
+                        .iter()
+                        .map(|p| {
+                            let w = Self::load_wallet(&p);
+                            Payee::from_str(&format!(
+                                "{}={}",
+                                w.address().unwrap(),
+                                hnt.to_string()
+                            ))
+                            .unwrap()
+                        })
+                        .collect();
+
+                    let now = Instant::now();
+                    let r = cmd_pay::cmd_pay(
+                        self.api_url.clone(),
+                        &seed_wallet,
+                        &self.password,
+                        payees,
+                        true,
+                        false,
+                    );
+                    println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
+                    println!("Payment result: {:?}", r);
+
+                    // only wait if no error
+                    if r.is_ok() {
+                        loop {
+                            if seed_bal != self.get_account_balance(&seed_address) {
+                                break;
+                            }
+                            thread::sleep(Duration::from_secs(15));
+                        }
+                    }
+                }
+            });
+
+            // All payment txns have been completed
+            payments
+                .iter()
+                .for_each(|payment| seeder_keys.push(payment.0.clone()))
+        }
+    }
 
     /// Will take and evenly distribute funds from either the
     /// highest balance wallet  or from the `from_address`
@@ -252,7 +335,10 @@ impl Banker {
                         .unwrap()
                 })
                 .collect();
+
             for chunk in &payees.into_iter().chunks(MAX_MULTIPAY) {
+                //let before_bal = self.get_account_balance(&seed_address);
+
                 let now = Instant::now();
                 let r = cmd_pay::cmd_pay(
                     self.api_url.clone(),
@@ -262,9 +348,16 @@ impl Banker {
                     true,
                     false,
                 );
-
                 println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
                 println!("Payment result: {:?}", r);
+
+                // loop {
+                //     if before_bal != self.get_account_balance(&seed_address) {
+                //         break;
+                //     }
+                //     println!("Waiting for txn to process...");
+                //     thread::sleep(Duration::from_secs(30));
+                // }
             }
         }
     }
