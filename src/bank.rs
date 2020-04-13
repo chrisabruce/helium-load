@@ -241,6 +241,8 @@ impl Banker {
             }
         }
 
+        let total_seedable_keys = seedable_keys.len();
+
         // loop and drain the seedable_keys as payments are sent
         while seedable_keys.len() > 0 {
             // each seeder will pay a range of receivers
@@ -298,7 +300,7 @@ impl Banker {
                     println!(
                         "Waiting for txn verification (processed {}/{})...",
                         seeder_keys.len(),
-                        seedable_keys.len()
+                        total_seedable_keys
                     );
                     // only wait if no error
                     if r.is_ok() {
