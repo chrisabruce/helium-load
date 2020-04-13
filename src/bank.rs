@@ -267,7 +267,7 @@ impl Banker {
                 let seed_bal = self.get_account_balance(&seed_address);
 
                 let wallet_count: u64 = payment.1.len() as u64;
-                let bones = seed_bal / wallet_count + 1; // plus one is to always keep enough for the seeder account
+                let bones = seed_bal / (wallet_count + 1); // plus one is to always keep enough for the seeder account
 
                 let hnt: Hnt = Hnt::from_bones(bones);
                 if bones > 0 {
