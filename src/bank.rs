@@ -226,6 +226,13 @@ impl Banker {
         }
     }
 
+    /// Groups account by batch_size and pays each other
+    /// waits for blocks, then goes to next group
+    /// at end circles back to beginning and starts over
+    pub fn pay_forward(&self, batch_size: usize) {
+        unimplemented!();
+    }
+
     /// Seeds with independent process, will sleep until
     /// seed accounts are complete.
     pub fn seed_independent(&self, from_address: &str) {
@@ -254,10 +261,11 @@ impl Banker {
                     if range > seedable_keys.len() {
                         range = seedable_keys.len();
                     }
-                    (p.clone(), seedable_keys.drain(0..range).collect())
+                    (p.clone(), seedable_keys.drain(..range).collect())
                 })
                 .collect();
 
+            // Remove any postential payers that doen't have any more receivers
             payments = payments.into_iter().filter(|p| p.1.len() > 0).collect();
 
             // Lets loop through each payer and pay
@@ -315,9 +323,11 @@ impl Banker {
             });
 
             // All payment txns have been completed
+            // copy them to seeder keys so they can help
+            // seed next batch.
             payments
                 .iter()
-                .for_each(|payment| seeder_keys.push(payment.0.clone()))
+                .for_each(|payment| seeder_keys.extend(payment.1.iter().cloned()))
         }
     }
 
