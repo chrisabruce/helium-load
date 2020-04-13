@@ -245,7 +245,7 @@ impl Banker {
         while seedable_keys.len() > 0 {
             // each seeder will pay a range of receivers
             // this drains the seedable list
-            let payments: Vec<(PathBuf, Vec<PathBuf>)> = seeder_keys
+            let mut payments: Vec<(PathBuf, Vec<PathBuf>)> = seeder_keys
                 .iter()
                 .map(|p| {
                     let mut range = MAX_MULTIPAY;
@@ -256,6 +256,8 @@ impl Banker {
                 })
                 .collect();
 
+            payments = payments.into_iter().filter(|p| p.1.len() > 0).collect();
+
             // Lets loop through each payer and pay
             payments.par_iter().for_each(|payment| {
                 let seed_wallet = Self::load_wallet(&payment.0);
@@ -263,7 +265,7 @@ impl Banker {
                 let seed_bal = self.get_account_balance(&seed_address);
 
                 let wallet_count: u64 = payment.1.len() as u64;
-                let bones = seed_bal / wallet_count;
+                let bones = seed_bal / wallet_count + 1; // plus one is to always keep enough for the seeder account
 
                 let hnt: Hnt = Hnt::from_bones(bones);
                 if bones > 0 {
@@ -293,7 +295,11 @@ impl Banker {
                     );
                     println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
                     println!("Payment result: {:?}", r);
-
+                    println!(
+                        "Waiting for txn verification (processed {}/{})...",
+                        seeder_keys.len(),
+                        seedable_keys.len()
+                    );
                     // only wait if no error
                     if r.is_ok() {
                         loop {
