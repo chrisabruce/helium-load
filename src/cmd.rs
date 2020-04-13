@@ -39,10 +39,15 @@ pub enum SubCommand {
     #[clap(name = "max-balance")]
     MaxBalance,
 
-    /// Find wallet with highest balance and seeds all other wallets
-    /// uless optional `address` provided, then will seed from that address.
+    /// Seeds all wallets with equal share from seed account balance.
+    /// Will not wait for independent transactions.
     #[clap(name = "seed")]
     Seed(SeedOpts),
+
+    /// Seeds all wallets with equal share from seed account balance.
+    /// Will wait for txns to complete so txns are non-dependent.
+    #[clap(name = "seed-independent")]
+    SeedIndependent(SeedOpts),
 }
 
 /// A subcommand for controlling wallet creation
@@ -62,7 +67,7 @@ pub struct CollectOpts {
 /// A subcommand for seeding wallets
 #[derive(Clap)]
 pub struct SeedOpts {
-    /// An optional address to seed all balances from. If empty,
-    /// will seed from wallet with largest balance.
-    pub address: Option<String>,
+    /// Seeds all the keys in working director with equal
+    /// division of balance, from the address provided.
+    pub address: String,
 }

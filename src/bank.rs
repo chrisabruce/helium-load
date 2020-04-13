@@ -1,8 +1,6 @@
 use glob::glob;
 use helium_api::{Account, Client, Hnt};
-use helium_wallet::{
-    cmd_balance, cmd_create, cmd_pay, cmd_pay::Payee, traits::ReadWrite, wallet::Wallet,
-};
+use helium_wallet::{cmd_create, cmd_pay, cmd_pay::Payee, traits::ReadWrite, wallet::Wallet};
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::{
@@ -14,6 +12,14 @@ use std::{
 };
 
 const MAX_MULTIPAY: usize = 50;
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Balance {
+    pub key_file: String,
+    pub address: String,
+    pub balance: Option<u64>,
+    pub error: Option<String>,
+}
 
 pub struct Banker {
     api_url: String,
@@ -92,14 +98,6 @@ impl Banker {
             .find(|x| x.address().unwrap() == address)
     }
 
-    pub fn collect_addresses(&self) -> Vec<String> {
-        self.collect_wallets()
-            .iter()
-            .filter(|w| w.address().is_ok())
-            .map(|w| w.address().unwrap())
-            .collect()
-    }
-
     pub fn get_account(&self, address: &str) -> Option<Account> {
         let client = Client::new_with_base_url(self.api_url.clone());
         match client.get_account(&address) {
@@ -128,8 +126,44 @@ impl Banker {
     }
 
     pub fn print_all_balances(&self) {
-        let addresses = self.collect_addresses();
-        let _ = cmd_balance::cmd_balance(self.api_url.clone(), addresses);
+        let mut balances: Vec<Balance> = self
+            .key_paths
+            .par_iter()
+            .map(|p| {
+                let wallet = Self::load_wallet(p);
+                let address = wallet.address().unwrap();
+
+                let client = Client::new_with_base_url(self.api_url.clone());
+
+                let mut b = Balance {
+                    key_file: p.to_string_lossy().to_string(),
+                    address: address.clone(),
+                    balance: None,
+                    error: None,
+                };
+
+                match client.get_account(&address) {
+                    Ok(account) => b.balance = Some(account.balance),
+                    Err(e) => b.error = Some(e.to_string()),
+                };
+
+                b
+            })
+            .collect();
+
+        balances.sort();
+
+        let mut table = prettytable::Table::new();
+        table.add_row(row!["Key", "Address", "Bones", "Error"]);
+        for b in balances {
+            table.add_row(row![
+                b.key_file,
+                b.address,
+                b.balance.unwrap_or(0),
+                b.error.unwrap_or("n/a".to_string())
+            ]);
+        }
+        table.printstd();
     }
 
     pub fn fan_out(&self) {
@@ -192,13 +226,14 @@ impl Banker {
         }
     }
 
+    /// Seeds with independent process, will sleep until
+    /// seed accounts are complete.
+    pub fn seed_independent(&self, from_address: &str) {}
+
     /// Will take and evenly distribute funds from either the
     /// highest balance wallet  or from the `from_address`
-    pub fn seed(&self, from_address: Option<String>) {
-        let seed_wallet = match from_address {
-            Some(address) => self.wallet_from_address(&address).unwrap(),
-            _ => self.max_bal_wallet(),
-        };
+    pub fn seed(&self, from_address: &str) {
+        let seed_wallet = self.wallet_from_address(from_address).unwrap();
 
         let seed_address = seed_wallet.address().unwrap();
 
@@ -267,6 +302,10 @@ impl Banker {
             println!("Elapsed Time: {} ms.", now.elapsed().as_millis());
             println!("Payment result: {:?}", r);
         }
+    }
+
+    pub fn current_height(&self) -> u64 {
+        unimplemented!()
     }
 }
 

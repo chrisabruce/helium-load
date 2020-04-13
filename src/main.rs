@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate prettytable;
+
 mod bank;
 mod cmd;
 
@@ -25,7 +28,8 @@ fn main() {
             let bal = banker.get_wallet_balance(&rich_one);
             println!("Richest Wallet: {}: {}", addr, bal);
         }
-        cmd::SubCommand::Seed(opts) => banker.seed(opts.address),
+        cmd::SubCommand::Seed(opts) => banker.seed(&opts.address),
+        cmd::SubCommand::SeedIndependent(opts) => banker.seed_independent(&opts.address),
     }
 }
 
