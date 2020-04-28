@@ -310,6 +310,8 @@ impl Banker {
                         seeder_keys.len(),
                         total_seedable_keys
                     );
+
+                    let mut last_height = self.current_height();
                     // only wait if no error
                     if r.is_ok() {
                         loop {
@@ -317,6 +319,11 @@ impl Banker {
                                 break;
                             }
                             thread::sleep(Duration::from_secs(15));
+                            let height = self.current_height();
+                            if height > last_height {
+                                last_height = height;
+                                println!("Checking Height: {}", last_height);
+                            }
                         }
                     }
                 }
@@ -390,6 +397,7 @@ impl Banker {
                 self.pay(bones, &payer_wallet, &payee_wallet)
             };
         });
+        println!("Current height: {}", self.current_height());
     }
 
     pub fn pay(&self, bones: u64, payer: &Wallet, payee: &Wallet) {
@@ -416,7 +424,8 @@ impl Banker {
     }
 
     pub fn current_height(&self) -> u64 {
-        unimplemented!()
+        let client = Client::new_with_base_url(self.api_url.clone());
+        client.get_height().unwrap()
     }
 }
 
