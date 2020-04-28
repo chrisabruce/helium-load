@@ -1,8 +1,3 @@
-use glob::glob;
-use helium_api::{Account, Client, Hnt};
-use helium_wallet::{cmd_create, cmd_pay, cmd_pay::Payee, traits::ReadWrite, wallet::Wallet};
-use itertools::Itertools;
-use rayon::prelude::*;
 use std::{
     error::Error,
     fmt, fs,
@@ -11,6 +6,13 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+
+use helium_api::{Account, Client, Hnt};
+use helium_wallet::{cmd_create, cmd_pay, cmd_pay::Payee, traits::ReadWrite, wallet::Wallet};
+
+use glob::glob;
+use itertools::Itertools;
+use rayon::prelude::*;
 
 const MAX_MULTIPAY: usize = 50;
 
@@ -43,6 +45,31 @@ impl Payment {
             payees_key_files,
             bones,
         }
+    }
+
+    pub fn payees(&self) -> Vec<cmd_pay::Payee> {
+        let hnt = Hnt::from_bones(self.bones).to_string();
+        self.payees_key_files
+            .iter()
+            .map(|kf| {
+                let wallet = Banker::load_wallet(kf);
+                Payee::from_str(&format!("{}={}", wallet.address().unwrap(), hnt)).unwrap()
+            })
+            .collect()
+    }
+}
+
+impl fmt::Display for Payment {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let payer_wallet = Banker::load_wallet(&self.payer_key_file);
+
+        write!(
+            f,
+            "Payment from {} to {:?}.",
+            payer_wallet.address().unwrap(),
+            self.payees()
+        )
     }
 }
 
@@ -276,10 +303,7 @@ impl Banker {
                 let now = Instant::now();
                 // Parallel process these
                 payments_batch.par_iter().for_each(|p| {
-                    let r = self.send_payment(p);
-                    if r.is_err() {
-                        println!("Payment result: {:?}", r);
-                    }
+                    let _ = self.send_payment(p);
                 });
                 println!(
                     "Processed batch #{} in: {} ms.",
@@ -471,26 +495,22 @@ impl Banker {
     }
 
     pub fn send_payment(&self, payment: &Payment) -> Result<(), Box<dyn Error>> {
-        let hnt = Hnt::from_bones(payment.bones).to_string();
         let payer_wallet = Self::load_wallet(&payment.payer_key_file);
 
-        let payees: Vec<cmd_pay::Payee> = payment
-            .payees_key_files
-            .iter()
-            .map(|kf| {
-                let wallet = Self::load_wallet(kf);
-                Payee::from_str(&format!("{}={}", wallet.address().unwrap(), hnt)).unwrap()
-            })
-            .collect();
-
-        cmd_pay::cmd_pay(
+        let r = cmd_pay::cmd_pay(
             self.api_url.clone(),
             &payer_wallet,
             &self.password,
-            payees,
+            payment.payees(),
             true,
             true,
-        )
+        );
+
+        if r.is_err() {
+            println!("Payment: {} had an error: {:?}", payment, r);
+        }
+
+        r
     }
 
     // TODO: Refactor this into send_payment
