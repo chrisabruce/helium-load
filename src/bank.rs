@@ -4,6 +4,7 @@ use helium_wallet::{cmd_create, cmd_pay, cmd_pay::Payee, traits::ReadWrite, wall
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::{
+    error::Error,
     fmt, fs,
     path::PathBuf,
     str::FromStr,
@@ -21,11 +22,34 @@ pub struct Balance {
     pub error: Option<String>,
 }
 
+pub struct Payment {
+    pub payer_key_file: PathBuf,
+    pub payees_key_files: Vec<PathBuf>,
+    pub bones: u64,
+}
+
+impl Payment {
+    pub fn new_single(payer_key_file: PathBuf, payee_key_file: PathBuf, bones: u64) -> Self {
+        Self {
+            payer_key_file,
+            payees_key_files: vec![payee_key_file],
+            bones,
+        }
+    }
+
+    pub fn new_multi(payer_key_file: PathBuf, payees_key_files: Vec<PathBuf>, bones: u64) -> Self {
+        Self {
+            payer_key_file,
+            payees_key_files,
+            bones,
+        }
+    }
+}
+
 pub struct Banker {
     api_url: String,
     password: String,
     working_dir: String,
-    threads: usize,
     key_paths: Vec<PathBuf>,
 }
 
@@ -42,7 +66,6 @@ impl Banker {
             api_url: api_url.to_string(),
             password: password.to_string(),
             working_dir: working_dir.to_string(),
-            threads: threads,
             key_paths: Self::get_key_paths(working_dir),
         }
     }
@@ -230,7 +253,54 @@ impl Banker {
     /// waits for blocks, then goes to next group
     /// at end circles back to beginning and starts over
     pub fn pay_forward(&self, batch_size: usize) {
-        unimplemented!();
+        // let's create payments
+        let mut payments: Vec<Payment> = Vec::with_capacity(self.key_paths.len());
+
+        for (pos, path) in self.key_paths.iter().enumerate() {
+            let payee = if pos + 1 < self.key_paths.len() {
+                self.key_paths[pos + 1].clone()
+            } else {
+                self.key_paths[0].clone()
+            };
+
+            payments.push(Payment::new_single(path.clone(), payee.clone(), 1));
+        }
+
+        // loop
+        let mut last_height: u64 = self.current_height();
+        let mut batch_num = 1;
+        loop {
+            // Group payments into batches of batch_size
+            for payments_batch in payments.chunks(batch_size) {
+                println!("Processing batch #{}...", batch_num);
+                let now = Instant::now();
+                // Parallel process these
+                payments_batch.par_iter().for_each(|p| {
+                    let r = self.send_payment(p);
+                    if r.is_err() {
+                        println!("Payment result: {:?}", r);
+                    }
+                });
+                println!(
+                    "Processed batch #{} in: {} ms.",
+                    batch_num,
+                    now.elapsed().as_millis()
+                );
+
+                // Wait for next block
+                loop {
+                    thread::sleep(Duration::from_secs(10));
+                    println!("Checking Height: {}", last_height);
+                    let height = self.current_height();
+                    if height > last_height {
+                        last_height = height;
+                        break;
+                    }
+                }
+                batch_num += 1;
+            }
+            // Start all over again.
+        }
     }
 
     /// Seeds with independent process, will sleep until
@@ -400,6 +470,30 @@ impl Banker {
         println!("Current height: {}", self.current_height());
     }
 
+    pub fn send_payment(&self, payment: &Payment) -> Result<(), Box<dyn Error>> {
+        let hnt = Hnt::from_bones(payment.bones).to_string();
+        let payer_wallet = Self::load_wallet(&payment.payer_key_file);
+
+        let payees: Vec<cmd_pay::Payee> = payment
+            .payees_key_files
+            .iter()
+            .map(|kf| {
+                let wallet = Self::load_wallet(kf);
+                Payee::from_str(&format!("{}={}", wallet.address().unwrap(), hnt)).unwrap()
+            })
+            .collect();
+
+        cmd_pay::cmd_pay(
+            self.api_url.clone(),
+            &payer_wallet,
+            &self.password,
+            payees,
+            true,
+            true,
+        )
+    }
+
+    // TODO: Refactor this into send_payment
     pub fn pay(&self, bones: u64, payer: &Wallet, payee: &Wallet) {
         if bones > 0 {
             let hnt = Hnt::from_bones(bones);
@@ -437,7 +531,7 @@ impl fmt::Display for Banker {
             self.key_paths.len(),
             self.working_dir,
             self.api_url,
-            self.threads
+            rayon::current_num_threads(),
         )
     }
 }

@@ -30,6 +30,7 @@ fn main() {
         }
         cmd::SubCommand::Seed(opts) => banker.seed(&opts.address),
         cmd::SubCommand::SeedIndependent(opts) => banker.seed_independent(&opts.address),
+        cmd::SubCommand::Sustained(opts) => banker.pay_forward(opts.count),
     }
 }
 

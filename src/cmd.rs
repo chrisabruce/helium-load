@@ -10,8 +10,9 @@ pub struct Opts {
     pub working_dir: String,
     /// The number of threads to use while processing data.
     /// NOTE: some processes can't make that much use of more than
-    /// 1 in order not to have nonce conflicts.
-    #[clap(short = "t", long = "threads", default_value = "4")]
+    /// 1 in order not to have nonce conflicts. Defaults to use same
+    /// number of threads as logical CPU cores.
+    #[clap(short = "t", long = "threads", default_value = "0")]
     pub threads: usize,
     #[clap(subcommand)]
     pub subcmd: SubCommand,
@@ -48,6 +49,10 @@ pub enum SubCommand {
     /// Will wait for txns to complete so txns are non-dependent.
     #[clap(name = "seed-independent")]
     SeedIndependent(SeedOpts),
+
+    /// Creates a sustained volume of txns/block.
+    #[clap(name = "sustained")]
+    Sustained(SustainedOpts),
 }
 
 /// A subcommand for controlling wallet creation
@@ -70,4 +75,11 @@ pub struct SeedOpts {
     /// Seeds all the keys in working director with equal
     /// division of balance, from the address provided.
     pub address: String,
+}
+
+/// A subcommand for creating sustained txn volume
+#[derive(Clap)]
+pub struct SustainedOpts {
+    /// The total txns to sustain per block.
+    pub count: usize,
 }
